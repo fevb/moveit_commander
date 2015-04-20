@@ -40,6 +40,7 @@ import tf
 from moveit_ros_planning_interface import _moveit_move_group_interface
 from exception import MoveItCommanderException
 import conversions
+import numpy as np
 
 class MoveGroupCommander(object):
     """
@@ -128,6 +129,16 @@ class MoveGroupCommander(object):
     def set_start_state(self, msg):
         self._g.set_start_state(conversions.msg_to_string(msg))
 
+    def normalize_angle(self, angle):
+        """
+        Normalize an angle between -pi and pi
+        """
+        angle_normalized = np.mod(angle, 2*np.pi)
+        if (angle_normalized > np.pi):
+            angle_normalized = -(2*np.pi - angle_normalized)
+
+        return angle_normalized
+
     def set_joint_value_target(self, arg1, arg2 = None, arg3 = None):
         """
         Specify a target joint configuration for the group.
@@ -145,12 +156,27 @@ class MoveGroupCommander(object):
         if (type(arg1) is dict) or (type(arg1) is list):
             if (arg2 != None or arg3 != None):
                 raise MoveItCommanderException("Too many arguments specified")
+
+            # normalize joint values between -pi,pi
+            if(type(arg1) is dict):
+                for key in arg1.keys():
+                    arg1[key] = self.normalize_angle(arg1[key])
+
+            elif(type(arg1) is list):
+                for joint in xrange(len(arg1)):
+                    arg1[joint] = self.normalize_angle(arg1[joint])
+
             if not self._g.set_joint_value_target(arg1):
                 raise MoveItCommanderException("Error setting joint target. Is the target within bounds?")
             return
         if type(arg1) is JointState:
             if (arg2 != None or arg3 != None):
                 raise MoveItCommanderException("Too many arguments specified")
+
+            # normalize joint values between -pi,pi
+            for joint in xrange(len(arg1.position)):
+                arg1.position[joint] = self.normalize_angle(arg1.position[joint])
+
             if not self._g.set_joint_value_target_from_joint_state_message(conversions.msg_to_string(arg1)):
                 raise MoveItCommanderException("Error setting joint target. Is the target within bounds?")
         if (type(arg1) is str):
@@ -158,6 +184,10 @@ class MoveGroupCommander(object):
                 raise MoveItCommanderException("Joint value expected when joint name specified")
             if (arg3 != None):
                 raise MoveItCommanderException("Too many arguments specified")
+
+            # normalize joint values between -pi,pi
+            arg2 = self.normalize_angle(arg2)
+
             if not self._g.set_joint_value_target(arg1, arg2):
                 raise MoveItCommanderException("Error setting joint target. Is the target within bounds?")
         if (type(arg1) is PoseStamped) or (type(arg1) is Pose):
@@ -285,6 +315,10 @@ class MoveGroupCommander(object):
         """ Record the specified joint configuration of the group under the specified name. If no values are specified, the current state of the group is recorded. """
         if values == None:
             values = self.get_current_joint_values()
+
+        for joint in xrange(len(values)):
+                values[joint] = self.normalize_angle(values[joint])
+                
         self._g.remember_joint_values(name, values)
 
     def get_remembered_joint_values(self):
